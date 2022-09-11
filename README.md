@@ -1,5 +1,4 @@
 # to-do-list
 backend project using node
 
-this web app contains three routes, '/', '/work', 'about'
-used ejs as templating engine,
+this web app is capable of generating as many costom lists as you want.
