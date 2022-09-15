@@ -1,24 +1,90 @@
 const express = require("express");
 const bodyParser = require("body-parser");
 const https = require("https");
+const mongoose = require("mongoose")
 const app = express();
+const _ = require("lodash");
+
+mongoose.connect("mongodb://localhost:27017/todolistDB",{useNewUrlParser:true});
 
 app.use(bodyParser.urlencoded({extended:true}));
 app.use(express.static("public"));
 app.set('view engine', 'ejs');
 
-var itemlist=[];
-var workitemlist=[];
+const itemSchema = {
+    name: String
+}
+
+const listSchema = {
+    name:String,
+    items:[itemSchema]
+}
+
+const List = mongoose.model("List", listSchema)
+
+const Item = mongoose.model("Item", itemSchema);
+
+const item1 = new Item({
+    name: "Welcome to the list"
+});
+
+const item2 = new Item({
+    name: "Click on + to add an item to the list"
+});
+
+const item3 = new Item({
+    name: "<-- Click on checkbox to delete an item"
+});
+
+const defaultItemlist=[item1,item2,item3];
+
+const options = {weekday : 'long', year: 'numeric', month:'long'}
+let today = new Date().toLocaleDateString('en-us',options)
 
 app.get('/', function(req, res){
-    var options = {weekday : 'long', year: 'numeric', month:'long'}
-    let today = new Date().toLocaleDateString('en-us',options)
-    res.render('tempelate',{listTitle:today, itemlist:itemlist})
+   
+    Item.find({},function(err,foundItems){
+        if (foundItems.length===0){
+            Item.insertMany(defaultItemlist, function(err){
+                if (err){
+                    console.log(err);
+                } else { 
+                    console.log("successfully added");
+                }
+            });
+            res.redirect("/");
+        }
+
+        else{
+            res.render('tempelate',{listTitle:today, itemlist:foundItems})
+            }
+    })
+   
 });
 
 
-app.get('/work', function(req, res){
-    res.render('tempelate',{listTitle:"Worklist", itemlist:workitemlist});
+app.get('/:customlistName', function(req, res){
+    const listName = _.capitalize(req.params.customlistName);
+    List.findOne({name:listName}, function(err,found){
+        if(!err){
+            if (!found){
+                const list = new List({
+                    name: listName,
+                    items:defaultItemlist
+                });
+            
+                list.save();
+                res.redirect("/"+listName)
+            }
+
+            else{
+                res.render("tempelate", {listTitle:found.name, itemlist:found.items});
+            }
+        }
+    })
+    
+
+
 });
 
 app.get("/about", function(req, res){
@@ -27,18 +93,51 @@ app.get("/about", function(req, res){
 
 
 app.post('/', function(req, res){
-    let item = req.body.additem;
-    if(req.body.listtype =="Worklist"){
-        workitemlist.push(item);
-        res.redirect('/work')
+    itemName = req.body.additem
+    listName = req.body.listtype
+    const item = new Item({
+        name: itemName
+    })
+
+    if (listName===today){
+        itemName.save();
+        res.redirect('/');
+    } else {
+        List.findOne({name:listName}, function(err,foundList){
+            foundList.items.push(item);
+            foundList.save();
+            res.redirect("/"+listName);
+        });
     }
-    else{
-    itemlist.push(item);
-    res.redirect('/')
+   
     }
+)
+
+app.post("/delete",function(req,res){
+    itemid = req.body.checkbox;
+    listName = req.body.listName
+
+    if (listName===today){
+        Item.findByIdAndRemove({_id:itemid}, function(err){
+            if (err){
+                console.log(err);
+            } else {
+                console.log("Successfully removed item")
+            }
+        })
+        res.redirect("/")
+    } else {
+        List.findOneAndUpdate({name:listName}, {$pull:{items:{_id:itemid}}}, function(err,foundList){
+            if (!err){
+                res.redirect("/"+listName)
+            }
+        });
+    }
+    
 })
 
 
 app.listen(3000,function(){
     console.log("server is running on port 3000");
 })
+
